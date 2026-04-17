@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}404 Not Found — {{ config.title }}{% endblock title %}
+
+{% block content %}
+<div style="text-align: center; padding: 4rem 0;">
+  <p style="font-size: 5rem; line-height: 1; margin-bottom: 1rem;">🤖</p>
+  <h1 style="font-family: var(--font-serif); font-size: 2rem; margin-bottom: 0.75rem;">
+    404 — ページが見つかりません
+  </h1>
+  <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+    お探しのページは移動・削除されたか、URLが間違っている可能性があります。
+  </p>
+  <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+    <a href="{{ config.base_url }}" class="btn-primary" style="
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.6rem 1.25rem;
+      background: var(--accent); color: white;
+      border-radius: 8px; text-decoration: none; font-weight: 600;
+      transition: background 0.2s;
+    ">
+      🏠 トップページへ
+    </a>
+    <button onclick="history.back()" style="
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.6rem 1.25rem;
+      background: var(--bg-card); color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px; cursor: pointer; font-weight: 600;
+      font-family: var(--font-sans); font-size: 1rem;
+      transition: border-color 0.2s;
+    ">
+      ← 前のページへ
+    </button>
+  </div>
+</div>
+{% endblock content %}

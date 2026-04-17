@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.title }} — {{ config.title }}{% endblock title %}
+
+{% block content %}
+<div class="section-page">
+  <header class="page-header">
+    <h1 class="page-title">{{ section.title }}</h1>
+    {% if section.description %}
+    <p class="page-description">{{ section.description }}</p>
+    {% endif %}
+  </header>
+
+  {% if section.content %}
+  <div class="prose section-intro">
+    {{ section.content | safe }}
+  </div>
+  {% endif %}
+
+  <!-- ページ一覧 -->
+  {% if section.pages %}
+  <div class="page-list">
+    {% for page in section.pages | sort(attribute="date") %}
+    <a href="{{ page.permalink }}" class="page-list__item">
+      <div class="page-list__body">
+        <h2 class="page-list__title">{{ page.title }}</h2>
+        {% if page.description %}
+        <p class="page-list__desc">{{ page.description }}</p>
+        {% endif %}
+      </div>
+      <div class="page-list__meta">
+        {% if page.taxonomies.tags %}
+          {% for tag in page.taxonomies.tags | slice(end=3) %}
+          <span class="tag">#{{ tag }}</span>
+          {% endfor %}
+        {% endif %}
+        <time class="page-list__date">{{ page.updated | default(value=page.date) | date(format="%Y-%m-%d") }}</time>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-state">まだページがありません。<br>最初のページを作成しましょう。</p>
+  {% endif %}
+
+  <!-- サブセクション -->
+  {% if section.subsections %}
+  <div class="subsection-list">
+    {% for sub_path in section.subsections %}
+    {% set sub = get_section(path=sub_path) %}
+    <a href="{{ sub.permalink }}" class="category-card">
+      <div class="category-card__body">
+        <h2 class="category-card__title">{{ sub.title }}</h2>
+        {% if sub.description %}
+        <p class="category-card__desc">{{ sub.description }}</p>
+        {% endif %}
+        <span class="category-card__count">{{ sub.pages | length }} ページ</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock content %}

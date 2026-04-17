@@ -1,0 +1,47 @@
+<!-- 検索バー (F-B02) -->
+<div class="search-wrapper" role="search">
+  <label for="search-input" class="sr-only">Wiki を検索</label>
+  <div class="search-box">
+    <svg class="search-box__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <input
+      type="search"
+      id="search-input"
+      class="search-box__input"
+      placeholder="検索..."
+      autocomplete="off"
+      spellcheck="false"
+      aria-label="Wiki 内を検索"
+      aria-expanded="false"
+      aria-controls="search-results"
+      aria-haspopup="listbox"
+    />
+    <kbd class="search-box__kbd" aria-hidden="true">/</kbd>
+  </div>
+
+  <!-- 検索結果ドロップダウン -->
+  <div
+    id="search-results"
+    class="search-results"
+    role="listbox"
+    aria-label="検索結果"
+    hidden
+  ></div>
+</div>
+
+<script>
+  // キーボードショートカット: "/" で検索フォーカス (NF-A03)
+  document.addEventListener('keydown', function (e) {
+    if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      document.getElementById('search-input')?.focus();
+    }
+    if (e.key === 'Escape') {
+      const input = document.getElementById('search-input');
+      const results = document.getElementById('search-results');
+      if (input) { input.blur(); input.value = ''; }
+      if (results) { results.hidden = true; results.innerHTML = ''; }
+    }
+  });
+</script>

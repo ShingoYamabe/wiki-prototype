@@ -1,0 +1,38 @@
+<!-- 関連ページ (F-B03) -->
+{% if page.extra.related or page.taxonomies.tags %}
+<aside class="related-pages" aria-label="関連ページ">
+  <h2 class="related-pages__heading">関連ページ</h2>
+  <div class="related-pages__grid">
+
+    <!-- 手動指定の関連ページ -->
+    {% if page.extra.related %}
+      {% for rel_path in page.extra.related %}
+      {% set rel_page = get_page(path=rel_path ~ ".md") %}
+      {% if rel_page %}
+      <a href="{{ rel_page.permalink }}" class="related-card">
+        <span class="related-card__cat badge badge--{{ rel_page.extra.category | default(value='knowledge') }}">
+          {{ rel_page.extra.category | default(value='knowledge') }}
+        </span>
+        <span class="related-card__title">{{ rel_page.title }}</span>
+        {% if rel_page.description %}
+        <span class="related-card__desc">{{ rel_page.description }}</span>
+        {% endif %}
+      </a>
+      {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    <!-- タグベース自動補完（最大3件）-->
+    {# Zola の get_taxonomy_url 等でタグページを参照して自動表示。
+       実装注意: tera には直接的なクロスページ検索がないため、
+       search.js 側の JS でタグ一致ページを補完する方式を採用。
+       JS が無効の場合はタグリンクのみ表示する。 #}
+    {% if page.taxonomies.tags %}
+    <div class="related-pages__tag-hint" data-tags="{{ page.taxonomies.tags | join(sep=',') }}" id="js-related-auto" aria-live="polite">
+      <!-- JS が有効な場合、search.js が自動的に同一タグのページを表示 -->
+    </div>
+    {% endif %}
+
+  </div>
+</aside>
+{% endif %}

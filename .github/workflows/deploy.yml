@@ -1,0 +1,299 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# GitHub Pages デプロイに必要なパーミッション
+permissions:
+  contents: read
+  pages:    write
+  id-token: write
+
+# 同時デプロイを防ぐ（進行中のデプロイはキャンセルしない）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # ------------------------------------------------------------------
+      # 1. チェックアウト
+      # ------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 変更履歴取得のため全履歴が必要
+
+      # ------------------------------------------------------------------
+      # 2. Zola インストール（バイナリ直接取得 / キャッシュ利用）(8.1)
+      # ------------------------------------------------------------------
+      - name: Cache Zola binary
+        id: cache-zola
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/zola
+          key: zola-${{ runner.os }}-0.22.1
+
+      - name: Install Zola
+        if: steps.cache-zola.outputs.cache-hit != 'true'
+        run: |
+          ZOLA_VERSION="0.22.1"
+          curl -sL \
+            "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C /tmp
+          mkdir -p ~/.local/bin
+          mv /tmp/zola ~/.local/bin/zola
+          chmod +x ~/.local/bin/zola
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Add Zola to PATH (cache hit)
+        if: steps.cache-zola.outputs.cache-hit == 'true'
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Zola installation
+        run: zola --version
+
+      # ------------------------------------------------------------------
+      # 3. バリデーション (F-C03)
+      # ------------------------------------------------------------------
+      - name: Validate content
+        run: python3 tools/validate.py
+
+      # ------------------------------------------------------------------
+      # 4. Zola ビルド
+      # ------------------------------------------------------------------
+      - name: Build with Zola
+        run: zola build
+
+      # ------------------------------------------------------------------
+      # 5. 変更ページ情報収集 (F-D01)
+      # ------------------------------------------------------------------
+      - name: Collect changed pages
+        id: changed
+        run: |
+          # 直前のコミットとの差分を取得
+          PREV_SHA="${{ github.event.before }}"
+          CURR_SHA="${{ github.sha }}"
+
+          if [ -z "${PREV_SHA}" ] || [ "${PREV_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            # 初回 push の場合は HEAD~1 と比較
+            PREV_SHA="HEAD~1"
+          fi
+
+          # content/ 配下の変更 .md ファイルを取得
+          CHANGED_FILES=$(git diff --name-status "${PREV_SHA}..${CURR_SHA}" -- "content/" \
+            | grep "\.md$" || echo "")
+
+          # JSON 形式に変換（Teams 通知用）
+          PAGES_JSON="["
+          FIRST=true
+          while IFS= read -r line; do
+            [ -z "${line}" ] && continue
+            STATUS=$(echo "${line}" | cut -f1)
+            FILE=$(echo "${line}" | cut -f2)
+            # ファイルパスからタイトルを推測（frontmatter から title を取得）
+            if [ -f "${FILE}" ]; then
+              TITLE=$(grep -m1 '^title' "${FILE}" | sed 's/title *= *"//' | sed 's/"//' || echo "${FILE}")
+            else
+              TITLE="${FILE}"
+            fi
+            case "${STATUS}" in
+              A) TYPE="追加" ;;
+              M) TYPE="更新" ;;
+              D) TYPE="削除" ;;
+              *) TYPE="変更" ;;
+            esac
+            [ "${FIRST}" = "false" ] && PAGES_JSON="${PAGES_JSON},"
+            PAGES_JSON="${PAGES_JSON}{\"title\":\"${TITLE}\",\"path\":\"${FILE}\",\"type\":\"${TYPE}\"}"
+            FIRST=false
+          done <<< "${CHANGED_FILES}"
+          PAGES_JSON="${PAGES_JSON}]"
+
+          echo "pages_json=${PAGES_JSON}" >> "$GITHUB_OUTPUT"
+          echo "commit_msg=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
+          echo "author=$(git log -1 --pretty=%an)" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------
+      # 6. GitHub Pages アップロード & デプロイ
+      # ------------------------------------------------------------------
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      # ------------------------------------------------------------------
+      # 7. Teams 通知（成功）(F-D02)
+      # ------------------------------------------------------------------
+      - name: Notify Teams (success)
+        if: success() && vars.TEAMS_NOTIFY_ENABLED != 'false'
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          PAGES_JSON:        ${{ steps.changed.outputs.pages_json }}
+          COMMIT_MSG:        ${{ steps.changed.outputs.commit_msg }}
+          AUTHOR:            ${{ steps.changed.outputs.author }}
+          TIMESTAMP:         ${{ steps.changed.outputs.timestamp }}
+          WIKI_URL:          ${{ steps.deployment.outputs.page_url }}
+          RUN_URL:           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+
+          webhook_url = os.environ.get("TEAMS_WEBHOOK_URL", "")
+          if not webhook_url:
+              print("TEAMS_WEBHOOK_URL が設定されていません。スキップします。")
+              exit(0)
+
+          pages_raw = os.environ.get("PAGES_JSON", "[]")
+          try:
+              pages = json.loads(pages_raw)
+          except Exception:
+              pages = []
+
+          # 変更ページリスト
+          wiki_url = os.environ.get("WIKI_URL", "https://scr-lab.github.io/wiki")
+          if pages:
+              page_lines = "\n".join(
+                  f"- [{p['title']}]({wiki_url}) ({p['type']})"
+                  for p in pages[:10]
+              )
+          else:
+              page_lines = "（変更ページなし）"
+
+          card = {
+              "type": "message",
+              "attachments": [{
+                  "contentType": "application/vnd.microsoft.card.adaptive",
+                  "content": {
+                      "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                      "type": "AdaptiveCard",
+                      "version": "1.4",
+                      "body": [
+                          {
+                              "type": "TextBlock",
+                              "text": "📝 SCR Lab Wiki が更新されました",
+                              "weight": "Bolder",
+                              "size": "Medium",
+                              "color": "Good"
+                          },
+                          {
+                              "type": "TextBlock",
+                              "text": f"**更新ページ**\n{page_lines}",
+                              "wrap": True
+                          },
+                          {
+                              "type": "TextBlock",
+                              "text": f"コミット: {os.environ.get('COMMIT_MSG', '')}\nby {os.environ.get('AUTHOR', '')} | {os.environ.get('TIMESTAMP', '')}",
+                              "wrap": True,
+                              "size": "Small",
+                              "color": "Accent"
+                          }
+                      ],
+                      "actions": [
+                          {
+                              "type": "Action.OpenUrl",
+                              "title": "Wiki を開く",
+                              "url": wiki_url
+                          },
+                          {
+                              "type": "Action.OpenUrl",
+                              "title": "Actions ログ",
+                              "url": os.environ.get("RUN_URL", "")
+                          }
+                      ]
+                  }
+              }]
+          }
+
+          data = json.dumps(card).encode("utf-8")
+          req  = urllib.request.Request(
+              webhook_url,
+              data=data,
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  print(f"Teams 通知送信完了: HTTP {resp.status}")
+          except Exception as e:
+              print(f"Teams 通知に失敗しました: {e}")
+          PYEOF
+
+      # ------------------------------------------------------------------
+      # 8. Teams 通知（失敗）(F-D02)
+      # ------------------------------------------------------------------
+      - name: Notify Teams (failure)
+        if: failure() && vars.TEAMS_NOTIFY_ENABLED != 'false'
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          COMMIT_SHA:        ${{ github.sha }}
+          RUN_URL:           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+
+          webhook_url = os.environ.get("TEAMS_WEBHOOK_URL", "")
+          if not webhook_url:
+              exit(0)
+
+          card = {
+              "type": "message",
+              "attachments": [{
+                  "contentType": "application/vnd.microsoft.card.adaptive",
+                  "content": {
+                      "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                      "type": "AdaptiveCard",
+                      "version": "1.4",
+                      "body": [
+                          {
+                              "type": "TextBlock",
+                              "text": "❌ SCR Lab Wiki のデプロイが失敗しました",
+                              "weight": "Bolder",
+                              "size": "Medium",
+                              "color": "Attention"
+                          },
+                          {
+                              "type": "TextBlock",
+                              "text": f"コミット: {os.environ.get('COMMIT_SHA', '')[:7]}\nActions ログを確認してください。",
+                              "wrap": True
+                          }
+                      ],
+                      "actions": [
+                          {
+                              "type": "Action.OpenUrl",
+                              "title": "Actions ログを確認",
+                              "url": os.environ.get("RUN_URL", "")
+                          }
+                      ]
+                  }
+              }]
+          }
+
+          data = json.dumps(card).encode("utf-8")
+          req  = urllib.request.Request(
+              webhook_url,
+              data=data,
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  print(f"Teams 失敗通知送信完了: HTTP {resp.status}")
+          except Exception as e:
+              print(f"Teams 通知に失敗しました: {e}")
+          PYEOF

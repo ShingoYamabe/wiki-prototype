@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="{% if page.description %}{{ page.description }}{% elif section.description %}{{ section.description }}{% else %}{{ config.description }}{% endif %}" />
+
+  <title>{% block title %}{% if page.title %}{{ page.title }} — {% elif section.title %}{{ section.title }} — {% endif %}{{ config.title }}{% endblock title %}</title>
+
+  <!-- Google Fonts (TC-05: 外部CDN最小限) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Syntax Highlight CSS (Zola 0.22.x: giallo-light/dark.css が自動生成される) -->
+  <!-- ライトモードはデフォルトで読み込み、JS でダークモード時に切り替え -->
+  <link id="syntax-css" rel="stylesheet" href="{{ get_url(path='giallo-light.css') }}" />
+
+  <!-- Main CSS -->
+  <link rel="stylesheet" href="{{ get_url(path='css/main.css') }}" />
+
+  {% block extra_head %}{% endblock extra_head %}
+</head>
+<body>
+  <!-- ヘッダ (7.4 Header) -->
+  {% include "partials/header.html" %}
+
+  <div class="layout">
+    <!-- サイドバー (F-B01) -->
+    {% include "partials/sidebar.html" %}
+
+    <!-- メインコンテンツ -->
+    <main id="main-content" class="main-content">
+      {% block content %}{% endblock content %}
+    </main>
+
+    <!-- ToC (F-A04) -->
+    {% block toc %}{% endblock toc %}
+  </div>
+
+  <!-- フッター (7.4 Footer) -->
+  {% include "partials/footer.html" %}
+
+  <!-- JS -->
+  <script src="{{ get_url(path='js/sidebar.js') }}" defer></script>
+  <script src="{{ get_url(path='js/search.js') }}" defer></script>
+
+  <!-- カラーモード初期化（フラッシュ防止） -->
+  <script>
+    (function () {
+      const stored = localStorage.getItem('color-scheme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const scheme = stored || (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', scheme);
+      // syntax CSS も切り替え
+      const syntaxLink = document.getElementById('syntax-css');
+      if (syntaxLink) {
+        syntaxLink.href = syntaxLink.href.replace(
+          /giallo-(light|dark)\.css/,
+          'giallo-' + scheme + '.css'
+        );
+      }
+    })();
+  </script>
+</body>
+</html>

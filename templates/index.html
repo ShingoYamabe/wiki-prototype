@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">{{ section.title | default(value="SCR Lab Wiki") }}</h1>
+  {% if section.description %}
+  <p class="page-description">{{ section.description }}</p>
+  {% endif %}
+</div>
+
+<!-- カテゴリカード一覧 -->
+<div class="category-grid">
+  {% for subsection in section.subsections %}
+  {% set sub = get_section(path=subsection) %}
+  <a href="{{ sub.permalink }}" class="category-card">
+    <div class="category-card__icon">
+      {% if sub.extra.icon %}{{ sub.extra.icon }}{% else %}📄{% endif %}
+    </div>
+    <div class="category-card__body">
+      <h2 class="category-card__title">{{ sub.title }}</h2>
+      {% if sub.description %}
+      <p class="category-card__desc">{{ sub.description }}</p>
+      {% endif %}
+      <span class="category-card__count">{{ sub.pages | length }} ページ</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+<!-- 最近更新されたページ -->
+{% set all_pages = section.pages %}
+{% if all_pages %}
+<section class="recent-pages">
+  <h2 class="section-heading">最近の更新</h2>
+  <ul class="recent-list">
+    {% for page in all_pages | sort(attribute="updated") | reverse | slice(end=8) %}
+    <li class="recent-list__item">
+      <a href="{{ page.permalink }}" class="recent-list__link">{{ page.title }}</a>
+      <span class="recent-list__meta">
+        <span class="badge badge--{{ page.extra.category | default(value='knowledge') }}">
+          {{ page.extra.category | default(value='knowledge') }}
+        </span>
+        <time>{{ page.updated | default(value=page.date) | date(format="%Y-%m-%d") }}</time>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock content %}

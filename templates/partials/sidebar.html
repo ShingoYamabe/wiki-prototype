@@ -1,0 +1,47 @@
+<!-- サイドバー: 240px / 折り畳み対応 (F-B01) -->
+<nav id="sidebar" class="sidebar" aria-label="サイドナビゲーション">
+  <div class="sidebar__inner">
+
+    <!-- オーバーレイ（モバイル） -->
+    <div class="sidebar__overlay" id="sidebar-overlay" aria-hidden="true"></div>
+
+    {#
+      カテゴリ定義は config.toml の [[extra.categories]] から取得する。
+      Tera は多次元配列リテラルを直接サポートしないため、
+      config 参照方式に統一（サイドバーテンプレート内定義エラーの回避）。
+    #}
+    {% for cat in config.extra.categories %}
+    {% set cat_section = get_section(path=cat.slug ~ "/_index.md") %}
+    {% if cat_section %}
+    <div class="sidebar__category" data-category="{{ cat.slug }}">
+      <button
+        class="sidebar__cat-btn"
+        aria-expanded="false"
+        aria-controls="sidebar-cat-{{ cat.slug }}"
+        data-category="{{ cat.slug }}"
+      >
+        <span class="sidebar__cat-icon" aria-hidden="true">{{ cat.icon }}</span>
+        <span class="sidebar__cat-name">{{ cat.label }}</span>
+        <svg class="sidebar__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      <ul class="sidebar__pages" id="sidebar-cat-{{ cat.slug }}" role="list">
+        {% for page in cat_section.pages | sort(attribute="date") %}
+        <li class="sidebar__page-item">
+          <a
+            href="{{ page.permalink }}"
+            class="sidebar__page-link {% if current_url and current_url == page.permalink %}is-active{% endif %}"
+          >{{ page.title }}</a>
+        </li>
+        {% endfor %}
+        {% if cat_section.pages | length == 0 %}
+        <li class="sidebar__empty">ページなし</li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+  </div>
+</nav>

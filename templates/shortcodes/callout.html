@@ -1,0 +1,13 @@
+<div class="callout callout--{{ type | default(value='info') }}" role="note">
+  {% if title %}
+  <div class="callout__header">
+    <span class="callout__icon" aria-hidden="true">
+      {% if type == "info" %}ℹ️{% elif type == "warning" %}⚠️{% elif type == "danger" %}🚨{% elif type == "tip" %}💡{% else %}ℹ️{% endif %}
+    </span>
+    <span class="callout__title">{{ title }}</span>
+  </div>
+  {% endif %}
+  <div class="callout__body">
+    {{ body | safe }}
+  </div>
+</div>

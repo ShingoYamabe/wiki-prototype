@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}タグ一覧 — {{ config.title }}{% endblock title %}
+
+{% block content %}
+<div class="section-page">
+  <header class="page-header">
+    <h1 class="page-title">タグ一覧</h1>
+    <p class="page-description">{{ terms | length }} 個のタグ</p>
+  </header>
+
+  <div class="tag-cloud">
+    {% for term in terms | sort(attribute="name") %}
+    <a href="{{ term.permalink }}" class="tag-cloud__item">
+      <span class="tag">#{{ term.name }}</span>
+      <span class="tag-cloud__count">{{ term.pages | length }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<style>
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.tag-cloud__item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  text-decoration: none;
+}
+.tag-cloud__count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--code-bg);
+  border-radius: 10px;
+  padding: 0 6px;
+}
+</style>
+{% endblock content %}
