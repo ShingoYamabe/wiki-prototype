@@ -13,6 +13,7 @@ weight = 1
 related = ["research/overview", "knowledge/git-workflow"]
 +++
 
+# **これはUXイメージを想像しやすくするためにAIに作成してもらったMOCKページです**
 # Rover 2025 プロジェクト
 
 ## プロジェクト概要
