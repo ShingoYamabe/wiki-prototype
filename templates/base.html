@@ -41,10 +41,12 @@
   <!-- フッター (7.4 Footer) -->
   {% include "partials/footer.html" %}
 
+  <!-- 検索インデックス URL を Zola の get_url で解決して JS に渡す -->
+  <script>window.SEARCH_INDEX_URL = "{{ get_url(path='search_index.en.json') }}";</script>
+
   <!-- JS -->
   <script src="{{ get_url(path='js/sidebar.js') }}" defer></script>
   <script src="{{ get_url(path='js/search.js') }}" defer></script>
-   <script data-base-url="{{ config.base_url }}">
 
   <!-- カラーモード初期化（フラッシュ防止） -->
   <script>
