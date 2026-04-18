@@ -34,7 +34,7 @@ taxonomies = [
 ]
 
 [languages.ja]
-build_search_index = false
+build_search_index = true
 
 [extra]
 # サイト共通設定
