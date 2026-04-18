@@ -36,9 +36,6 @@ taxonomies = [
   { name = "tags", feed = false, paginate_by = 0 },
 ]
 
-[languages.ja]
-build_search_index = true
-
 [extra]
 # サイト共通設定
 github_repo = "https://github.com/scr-lab/wiki"
