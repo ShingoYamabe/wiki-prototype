@@ -2,9 +2,7 @@
  * search.js — クライアントサイド全文検索 (F-B02)
  *
  * Zola の fuse_json 形式 (search_index.en.json) を Fuse.js で検索する。
- * fuse_json はドキュメント配列を出力するため、日本語を含む任意の言語で動作する。
- *
- * Fuse.js: https://fusejs.io/
+ * 日本語検索を最適化するため、Fuzzy Match の閾値を調整。
  */
 
 (function () {
@@ -23,26 +21,27 @@
   const FUSE_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/fuse.js/7.0.0/fuse.min.js';
 
   // Fuse.js 検索オプション
-  // threshold: 0 = 完全一致のみ, 1 = 何でもマッチ。0.3 前後が実用的
   const FUSE_OPTIONS = {
     keys: [
       { name: 'title',       weight: 3 },
       { name: 'description', weight: 2 },
       { name: 'body',        weight: 1 },
     ],
-    threshold:      0.3,   // ファジーマッチの許容度
-    ignoreLocation: true,  // 文字列内のどこに出現しても検索対象
+    threshold:          0.4,   // 0.3より少し緩めて日本語のマッチ率を向上
+    ignoreLocation:     true,  // 文字列内の位置を問わず検索（日本語には必須）
     minMatchCharLength: 1,
-    includeScore:   true,
-    includeMatches: false,
+    findAllMatches:     true,
+    useExtendedSearch:  true,  // 高度なマッチングを有効化
+    includeScore:       true,
+    includeMatches:     false,
   };
 
   // --------------------------------------------------------------------------
   // 状態
   // --------------------------------------------------------------------------
 
-  let fuse        = null;
-  let searchDocs  = null;  // 元のドキュメント配列（スニペット取得用）
+  let fuse         = null;
+  let searchDocs   = null;
   let searchLoaded = false;
   let loadPromise  = null;
 
@@ -68,7 +67,6 @@
             return r.json();
           })
           .then(function (data) {
-            // Zola の fuse_json は配列形式: [{title, body, description, url}, ...]
             searchDocs   = data;
             fuse         = new window.Fuse(data, FUSE_OPTIONS);
             searchLoaded = true;
@@ -138,7 +136,6 @@
     }
 
     hits.forEach(function (hit) {
-      // Fuse.js の結果: { item: {title, body, description, url}, score, ... }
       var doc = hit.item;
       if (!doc) return;
 
@@ -148,8 +145,6 @@
       a.setAttribute('role', 'option');
 
       var snippet = extractSnippet(doc.body || '', query, 120);
-      // Zola の fuse_json には category が直接入らないため省略
-      // （必要なら config.toml の [search] で include_path = true を指定する）
 
       a.innerHTML = [
         '<span class="search-result-item__title">' + escapeHtml(doc.title || doc.url) + '</span>',
@@ -178,7 +173,7 @@
   });
 
   // --------------------------------------------------------------------------
-  // キーボードナビゲーション (NF-A03)
+  // キーボードナビゲーション
   // --------------------------------------------------------------------------
 
   input.addEventListener('keydown', function (e) {
@@ -220,9 +215,9 @@
       var currentUrl = window.location.pathname;
       var matched = searchDocs.filter(function (doc) {
         if (!doc) return false;
-        // URL のパス部分で現在ページを除外
         try {
-          if (new URL(doc.url || '').pathname === currentUrl) return false;
+          var docPath = new URL(doc.url || '', window.location.origin).pathname;
+          if (docPath === currentUrl) return false;
         } catch (e) {}
         var docTags = (doc.taxonomies && doc.taxonomies.tags) || [];
         return tags.some(function (t) { return docTags.includes(t); });
@@ -258,13 +253,20 @@
 
   function extractSnippet(text, query, maxLen) {
     if (!text) return '';
-    var lower = text.toLowerCase();
-    var q     = query.toLowerCase().split(/\s+/)[0];
-    var idx   = lower.indexOf(q);
-    if (idx === -1) return text.slice(0, maxLen);
+    var lowerText = text.toLowerCase();
+    var q = query.toLowerCase();
+    
+    // 単語全体、または最初の1文字の出現位置を探す
+    var idx = lowerText.indexOf(q);
+    if (idx === -1) {
+        idx = lowerText.indexOf(q[0]);
+        if (idx === -1) return text.slice(0, maxLen);
+    }
+    
     var start = Math.max(0, idx - 40);
     var end   = Math.min(text.length, idx + maxLen);
-    return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '');
+    // 改行をスペースに置換して整形
+    return (start > 0 ? '…' : '') + text.slice(start, end).replace(/\s+/g, ' ') + (end < text.length ? '…' : '');
   }
 
 })();
