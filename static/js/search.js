@@ -11,8 +11,13 @@
   // Elasticlunr CDN URL
   const ELASTICLUNR_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/elasticlunr/0.9.6/elasticlunr.min.js';
 
-  // base.html の get_url で解決した URL を使用（サブパス対応）
-  const SEARCH_INDEX_URL = window.SEARCH_INDEX_URL || '/search_index.ja.json';
+  // base.html の get_url で解決した絶対 URL からパス部分だけ取り出す。
+  // これにより origin が local/production で異なっても正しく動作する。
+  const SEARCH_INDEX_URL = (function () {
+    var raw = window.SEARCH_INDEX_URL;
+    if (!raw) return '/search_index.en.json';
+    try { return new URL(raw).pathname; } catch (e) { return raw; }
+  })();
 
   let searchIndex  = null;
   let searchData   = null; // { doc_id -> {title, url, body, category, tags} }
