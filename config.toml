@@ -13,7 +13,7 @@ default_language = "en"
 build_search_index = true
 
 [search]
-index_format = "elasticlunr_json"
+index_format = "fuse_json"
 
 # Markdown 設定
 # Zola 0.22.x: ハイライト設定は [markdown.highlighting] サブセクション。
