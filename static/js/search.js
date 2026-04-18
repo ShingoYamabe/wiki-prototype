@@ -11,14 +11,11 @@
 (function () {
   'use strict';
 
-  // --------------------------------------------------------------------------
-  // 設定
-  // --------------------------------------------------------------------------
+  console.log('[search.js] Script initialized');
 
-  // base.html で Zola の get_url により絶対 URL が埋め込まれる。
-  // .pathname だけ取り出すことで origin が変わっても動作する。
   const SEARCH_INDEX_URL = (function () {
     var raw = window.SEARCH_INDEX_URL;
+    console.log('[search.js] Raw SEARCH_INDEX_URL from window:', raw);
     if (!raw) return '/search_index.en.json';
     try { return new URL(raw).pathname; } catch (e) { return raw; }
   })();
@@ -35,47 +32,52 @@
     },
   };
 
-  // --------------------------------------------------------------------------
-  // 状態
-  // --------------------------------------------------------------------------
-
-  let searchIndex  = null;   // elasticlunr.Index インスタンス
+  let searchIndex  = null;
   let searchLoaded = false;
   let loadPromise  = null;
 
   const input   = document.getElementById('search-input');
   const results = document.getElementById('search-results');
-  if (!input || !results) return;
-
-  // --------------------------------------------------------------------------
-  // インデックス読み込み（初回フォーカス時に一度だけ）
-  // --------------------------------------------------------------------------
+  
+  if (!input || !results) {
+    console.error('[search.js] Required DOM elements not found: #search-input or #search-results');
+    return;
+  }
 
   function loadIndex() {
     if (loadPromise) return loadPromise;
 
+    console.log('[search.js] Starting to load index...');
     loadPromise = new Promise(function (resolve, reject) {
       var script   = document.createElement('script');
       script.src   = ELASTICLUNR_CDN;
       script.async = true;
       script.onload = function () {
+        console.log('[search.js] Elasticlunr library loaded from CDN');
         fetch(SEARCH_INDEX_URL)
           .then(function (r) {
+            console.log('[search.js] Fetching index JSON, status:', r.status);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
           })
           .then(function (data) {
-            // Zola のシリアライズ済みインデックスを elasticlunr.Index.load() で読み込む
+            console.log('[search.js] Index JSON received. Raw data preview:', data);
+            
+            // Zolaのインデックス展開
             searchIndex  = window.elasticlunr.Index.load(data);
+            console.log('[search.js] Elasticlunr index loaded successfully.');
+            console.dir(searchIndex); // インデックスの内部構造（ドキュメント数等）をダンプ
+            
             searchLoaded = true;
             resolve();
           })
           .catch(function (err) {
-            console.warn('[search.js] Failed to load search index:', err);
+            console.error('[search.js] Failed to load or parse search index:', err);
             reject(err);
           });
       };
       script.onerror = function () {
+        console.error('[search.js] Failed to load elasticlunr script from CDN');
         reject(new Error('[search.js] Failed to load elasticlunr from CDN'));
       };
       document.head.appendChild(script);
@@ -85,12 +87,9 @@
   }
 
   input.addEventListener('focus', function () {
+    console.log('[search.js] Input focused. Initializing index load...');
     loadIndex().catch(function () {});
   }, { once: true });
-
-  // --------------------------------------------------------------------------
-  // インクリメンタルサーチ
-  // --------------------------------------------------------------------------
 
   var debounceTimer;
 
@@ -99,28 +98,31 @@
     var query = input.value.trim();
 
     if (!query) {
+      console.log('[search.js] Query is empty, hiding results');
       hideResults();
       return;
     }
 
     debounceTimer = setTimeout(function () {
+      console.log('[search.js] Executing search for query:', query);
       if (searchLoaded) {
         doSearch(query);
       } else {
+        console.log('[search.js] Index not yet loaded, waiting for loadIndex...');
         loadIndex().then(function () { doSearch(query); }).catch(function () {});
       }
     }, 150);
   });
 
   function doSearch(query) {
-    if (!searchIndex) return;
+    if (!searchIndex) {
+      console.warn('[search.js] doSearch called but searchIndex is null');
+      return;
+    }
     var hits = searchIndex.search(query, OPTIONS);
+    console.log('[search.js] Search hits for "' + query + '":', hits);
     renderResults(query, hits);
   }
-
-  // --------------------------------------------------------------------------
-  // 結果レンダリング
-  // --------------------------------------------------------------------------
 
   function renderResults(query, hits) {
     results.innerHTML = '';
@@ -128,15 +130,20 @@
     input.setAttribute('aria-expanded', 'true');
 
     if (!hits || !hits.length) {
+      console.log('[search.js] No hits found for query:', query);
       results.innerHTML =
         '<p class="search-no-results">「' + escapeHtml(query) + '」に一致するページが見つかりませんでした。</p>';
       return;
     }
 
-    hits.slice(0, 10).forEach(function (hit) {
-      // elasticlunr の documentStore からドキュメント情報を取得
+    hits.slice(0, 10).forEach(function (hit, i) {
       var doc = searchIndex.documentStore.getDoc(hit.ref);
-      if (!doc) return;
+      console.log('[search.js] Hit [' + i + '] detail:', { ref: hit.ref, score: hit.score, doc: doc });
+      
+      if (!doc) {
+        console.warn('[search.js] Document not found in store for ref:', hit.ref);
+        return;
+      }
 
       var a       = document.createElement('a');
       a.href      = hit.ref;
@@ -174,10 +181,6 @@
     }
   });
 
-  // --------------------------------------------------------------------------
-  // キーボードナビゲーション (NF-A03)
-  // --------------------------------------------------------------------------
-
   input.addEventListener('keydown', function (e) {
     var items   = results.querySelectorAll('.search-result-item');
     var focused = results.querySelector('.is-focused');
@@ -199,10 +202,6 @@
     }
   });
 
-  // --------------------------------------------------------------------------
-  // 関連ページ自動補完 (F-B03 タグベース)
-  // --------------------------------------------------------------------------
-
   function initRelatedAuto() {
     var placeholder = document.getElementById('js-related-auto');
     if (!placeholder) return;
@@ -216,6 +215,7 @@
 
       var currentUrl = window.location.pathname;
       var docs       = Object.values(searchIndex.documentStore.docs);
+      console.log('[search.js] Attempting related pages auto-render. Current URL:', currentUrl, 'Tags:', tags);
 
       var matched = docs.filter(function (doc) {
         if (!doc) return false;
@@ -223,6 +223,8 @@
         var docTags = (doc.taxonomies && doc.taxonomies.tags) || [];
         return tags.some(function (t) { return docTags.includes(t); });
       }).slice(0, 3);
+
+      console.log('[search.js] Related pages matched:', matched);
 
       matched.forEach(function (doc) {
         var a = document.createElement('a');
@@ -243,10 +245,6 @@
   }
 
   initRelatedAuto();
-
-  // --------------------------------------------------------------------------
-  // ユーティリティ
-  // --------------------------------------------------------------------------
 
   function escapeHtml(str) {
     return String(str)
