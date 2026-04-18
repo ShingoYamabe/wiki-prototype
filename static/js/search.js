@@ -1,84 +1,86 @@
 /**
  * search.js — クライアントサイド全文検索 (F-B02)
  *
- * Zola が elasticlunr_json 形式で生成する search_index.en.json は
- * ドキュメント配列ではなく「シリアライズ済み elasticlunr インデックス」です。
- * elasticlunr.Index.load(data) で読み込む必要があります。
+ * Zola の fuse_json 形式 (search_index.en.json) を Fuse.js で検索する。
+ * fuse_json はドキュメント配列を出力するため、日本語を含む任意の言語で動作する。
  *
- * 参考: https://github.com/getzola/zola/blob/master/docs/static/search.js
+ * Fuse.js: https://fusejs.io/
  */
 
 (function () {
   'use strict';
 
-  console.log('[search.js] Script initialized');
+  // --------------------------------------------------------------------------
+  // 設定
+  // --------------------------------------------------------------------------
 
   const SEARCH_INDEX_URL = (function () {
     var raw = window.SEARCH_INDEX_URL;
-    console.log('[search.js] Raw SEARCH_INDEX_URL from window:', raw);
     if (!raw) return '/search_index.en.json';
     try { return new URL(raw).pathname; } catch (e) { return raw; }
   })();
 
-  const ELASTICLUNR_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/elasticlunr/0.9.6/elasticlunr.min.js';
+  const FUSE_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/fuse.js/7.0.0/fuse.min.js';
 
-  const OPTIONS = {
-    bool: 'OR',
-    expand: true,
-    fields: {
-      title: { boost: 3 },
-      body:  { boost: 1 },
-      // description は Zola の Front Matter で設定していないとエラーになるため、一旦外すか重みを下げる
-    },
+  // Fuse.js 検索オプション
+  // threshold: 0 = 完全一致のみ, 1 = 何でもマッチ。0.3 前後が実用的
+  const FUSE_OPTIONS = {
+    keys: [
+      { name: 'title',       weight: 3 },
+      { name: 'description', weight: 2 },
+      { name: 'body',        weight: 1 },
+    ],
+    threshold:      0.3,   // ファジーマッチの許容度
+    ignoreLocation: true,  // 文字列内のどこに出現しても検索対象
+    minMatchCharLength: 1,
+    includeScore:   true,
+    includeMatches: false,
   };
 
-  let searchIndex  = null;
+  // --------------------------------------------------------------------------
+  // 状態
+  // --------------------------------------------------------------------------
+
+  let fuse        = null;
+  let searchDocs  = null;  // 元のドキュメント配列（スニペット取得用）
   let searchLoaded = false;
   let loadPromise  = null;
 
   const input   = document.getElementById('search-input');
   const results = document.getElementById('search-results');
-  
-  if (!input || !results) {
-    console.error('[search.js] Required DOM elements not found: #search-input or #search-results');
-    return;
-  }
+  if (!input || !results) return;
+
+  // --------------------------------------------------------------------------
+  // インデックス読み込み
+  // --------------------------------------------------------------------------
 
   function loadIndex() {
     if (loadPromise) return loadPromise;
 
-    console.log('[search.js] Starting to load index...');
     loadPromise = new Promise(function (resolve, reject) {
       var script   = document.createElement('script');
-      script.src   = ELASTICLUNR_CDN;
+      script.src   = FUSE_CDN;
       script.async = true;
       script.onload = function () {
-        console.log('[search.js] Elasticlunr library loaded from CDN');
         fetch(SEARCH_INDEX_URL)
           .then(function (r) {
-            console.log('[search.js] Fetching index JSON, status:', r.status);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
           })
           .then(function (data) {
-            console.log('[search.js] Index JSON received. Raw data preview:', data);
-            
-            // Zolaのインデックス展開
-            searchIndex  = window.elasticlunr.Index.load(data);
-            console.log('[search.js] Elasticlunr index loaded successfully.');
-            console.dir(searchIndex); // インデックスの内部構造（ドキュメント数等）をダンプ
-            
+            // Zola の fuse_json は配列形式: [{title, body, description, url}, ...]
+            searchDocs   = data;
+            fuse         = new window.Fuse(data, FUSE_OPTIONS);
             searchLoaded = true;
             resolve();
           })
           .catch(function (err) {
-            console.error('[search.js] Failed to load or parse search index:', err);
+            console.warn('[search.js] Failed to load search index:', err);
             reject(err);
           });
       };
       script.onerror = function () {
-        console.error('[search.js] Failed to load elasticlunr script from CDN');
-        reject(new Error('[search.js] Failed to load elasticlunr from CDN'));
+        reject(new Error('[search.js] Failed to load Fuse.js from CDN'));
       };
       document.head.appendChild(script);
     });
@@ -87,9 +89,12 @@
   }
 
   input.addEventListener('focus', function () {
-    console.log('[search.js] Input focused. Initializing index load...');
     loadIndex().catch(function () {});
   }, { once: true });
+
+  // --------------------------------------------------------------------------
+  // インクリメンタルサーチ
+  // --------------------------------------------------------------------------
 
   var debounceTimer;
 
@@ -98,31 +103,28 @@
     var query = input.value.trim();
 
     if (!query) {
-      console.log('[search.js] Query is empty, hiding results');
       hideResults();
       return;
     }
 
     debounceTimer = setTimeout(function () {
-      console.log('[search.js] Executing search for query:', query);
       if (searchLoaded) {
         doSearch(query);
       } else {
-        console.log('[search.js] Index not yet loaded, waiting for loadIndex...');
         loadIndex().then(function () { doSearch(query); }).catch(function () {});
       }
     }, 150);
   });
 
   function doSearch(query) {
-    if (!searchIndex) {
-      console.warn('[search.js] doSearch called but searchIndex is null');
-      return;
-    }
-    var hits = searchIndex.search(query, OPTIONS);
-    console.log('[search.js] Search hits for "' + query + '":', hits);
+    if (!fuse) return;
+    var hits = fuse.search(query, { limit: 10 });
     renderResults(query, hits);
   }
+
+  // --------------------------------------------------------------------------
+  // 結果レンダリング
+  // --------------------------------------------------------------------------
 
   function renderResults(query, hits) {
     results.innerHTML = '';
@@ -130,40 +132,29 @@
     input.setAttribute('aria-expanded', 'true');
 
     if (!hits || !hits.length) {
-      console.log('[search.js] No hits found for query:', query);
       results.innerHTML =
         '<p class="search-no-results">「' + escapeHtml(query) + '」に一致するページが見つかりませんでした。</p>';
       return;
     }
 
-    hits.slice(0, 10).forEach(function (hit, i) {
-      // ログから判明：Zola のインデックスでは hit.ref に URL が入っている
-      var doc = searchIndex.documentStore.getDoc(hit.ref);
-      
-      // デバッグ用に doc の中身を再度確認
-      console.log('[search.js] Rendering Hit ' + i, doc);
-
-      if (!doc) {
-          // doc が取れない場合は、インデックスの中身を直接参照するフォールバック
-          doc = searchIndex.documentStore.docs[hit.ref];
-      }
-      
+    hits.forEach(function (hit) {
+      // Fuse.js の結果: { item: {title, body, description, url}, score, ... }
+      var doc = hit.item;
       if (!doc) return;
 
       var a       = document.createElement('a');
-      a.href      = hit.ref;
+      a.href      = doc.url || '#';
       a.className = 'search-result-item';
       a.setAttribute('role', 'option');
 
       var snippet = extractSnippet(doc.body || '', query, 120);
-      var cat     = (doc.extra && doc.extra.category) ? doc.extra.category : '';
+      // Zola の fuse_json には category が直接入らないため省略
+      // （必要なら config.toml の [search] で include_path = true を指定する）
 
       a.innerHTML = [
-        '<span class="search-result-item__title">' + escapeHtml(doc.title || hit.ref) + '</span>',
-        cat
-          ? '<span class="search-result-item__meta">' +
-            '<span class="badge badge--' + escapeHtml(cat) + '">' + escapeHtml(cat) + '</span>' +
-            '</span>'
+        '<span class="search-result-item__title">' + escapeHtml(doc.title || doc.url) + '</span>',
+        doc.description
+          ? '<span class="search-result-item__meta">' + escapeHtml(doc.description.slice(0, 60)) + '</span>'
           : '',
         snippet
           ? '<span class="search-result-item__snippet">' + escapeHtml(snippet) + '</span>'
@@ -186,6 +177,10 @@
     }
   });
 
+  // --------------------------------------------------------------------------
+  // キーボードナビゲーション (NF-A03)
+  // --------------------------------------------------------------------------
+
   input.addEventListener('keydown', function (e) {
     var items   = results.querySelectorAll('.search-result-item');
     var focused = results.querySelector('.is-focused');
@@ -207,6 +202,10 @@
     }
   });
 
+  // --------------------------------------------------------------------------
+  // 関連ページ自動補完 (F-B03 タグベース)
+  // --------------------------------------------------------------------------
+
   function initRelatedAuto() {
     var placeholder = document.getElementById('js-related-auto');
     if (!placeholder) return;
@@ -216,28 +215,24 @@
     if (!tags.length) return;
 
     function tryRender() {
-      if (!searchLoaded || !searchIndex) { setTimeout(tryRender, 500); return; }
+      if (!searchLoaded || !searchDocs) { setTimeout(tryRender, 500); return; }
 
       var currentUrl = window.location.pathname;
-      var docs       = Object.values(searchIndex.documentStore.docs);
-      console.log('[search.js] Attempting related pages auto-render. Current URL:', currentUrl, 'Tags:', tags);
-
-      var matched = docs.filter(function (doc) {
+      var matched = searchDocs.filter(function (doc) {
         if (!doc) return false;
-        if ((doc.id || '') === currentUrl) return false;
+        // URL のパス部分で現在ページを除外
+        try {
+          if (new URL(doc.url || '').pathname === currentUrl) return false;
+        } catch (e) {}
         var docTags = (doc.taxonomies && doc.taxonomies.tags) || [];
         return tags.some(function (t) { return docTags.includes(t); });
       }).slice(0, 3);
 
-      console.log('[search.js] Related pages matched:', matched);
-
       matched.forEach(function (doc) {
         var a = document.createElement('a');
-        a.href = doc.id || '#';
+        a.href = doc.url || '#';
         a.className = 'related-card';
-        var cat = (doc.extra && doc.extra.category) || 'knowledge';
         a.innerHTML =
-          '<span class="related-card__cat badge badge--' + escapeHtml(cat) + '">' + escapeHtml(cat) + '</span>' +
           '<span class="related-card__title">' + escapeHtml(doc.title || '') + '</span>' +
           (doc.description ? '<span class="related-card__desc">' + escapeHtml(doc.description) + '</span>' : '');
         placeholder.appendChild(a);
@@ -251,6 +246,10 @@
 
   initRelatedAuto();
 
+  // --------------------------------------------------------------------------
+  // ユーティリティ
+  // --------------------------------------------------------------------------
+
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -258,6 +257,7 @@
   }
 
   function extractSnippet(text, query, maxLen) {
+    if (!text) return '';
     var lower = text.toLowerCase();
     var q     = query.toLowerCase().split(/\s+/)[0];
     var idx   = lower.indexOf(q);
