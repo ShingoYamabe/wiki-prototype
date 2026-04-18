@@ -26,9 +26,9 @@
     bool: 'OR',
     expand: true,
     fields: {
-      title:       { boost: 3 },
-      description: { boost: 2 },
-      body:        { boost: 1 },
+      title: { boost: 3 },
+      body:  { boost: 1 },
+      // description は Zola の Front Matter で設定していないとエラーになるため、一旦外すか重みを下げる
     },
   };
 
@@ -137,13 +137,18 @@
     }
 
     hits.slice(0, 10).forEach(function (hit, i) {
+      // ログから判明：Zola のインデックスでは hit.ref に URL が入っている
       var doc = searchIndex.documentStore.getDoc(hit.ref);
-      console.log('[search.js] Hit [' + i + '] detail:', { ref: hit.ref, score: hit.score, doc: doc });
       
+      // デバッグ用に doc の中身を再度確認
+      console.log('[search.js] Rendering Hit ' + i, doc);
+
       if (!doc) {
-        console.warn('[search.js] Document not found in store for ref:', hit.ref);
-        return;
+          // doc が取れない場合は、インデックスの中身を直接参照するフォールバック
+          doc = searchIndex.documentStore.docs[hit.ref];
       }
+      
+      if (!doc) return;
 
       var a       = document.createElement('a');
       a.href      = hit.ref;
