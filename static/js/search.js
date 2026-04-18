@@ -11,7 +11,13 @@
   // Elasticlunr CDN URL
   const ELASTICLUNR_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/elasticlunr/0.9.6/elasticlunr.min.js';
 
-  const SEARCH_INDEX_URL = window.location.origin + '/search_index.en.json';
+  // base_url がサブパス（例: /wiki/）の場合でも正しく解決するため、
+  // <script data-base-url> に Zola の base_url を埋め込み参照する。
+  const _baseEl  = document.querySelector('script[data-base-url]');
+  const _baseUrl = _baseEl
+    ? _baseEl.dataset.baseUrl.replace(/\/$/, '')
+    : window.location.origin;
+  const SEARCH_INDEX_URL = _baseUrl + '/search_index.en.json';
 
   let searchIndex  = null;
   let searchData   = null; // { doc_id -> {title, url, body, category, tags} }
