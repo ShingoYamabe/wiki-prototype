@@ -6,7 +6,7 @@ base_url = "https://ShingoYamabe.github.io/wiki-prototype"
 title = "SCR Lab Wiki"
 description = "システム制御・ロボティクス研究室 知識共有 Wiki"
 
-default_language = "ja"
+default_language = "en"
 # theme は指定しない（独自テンプレートを直接 templates/ に配置するため）
 
 # 検索インデックス (F-B02)
